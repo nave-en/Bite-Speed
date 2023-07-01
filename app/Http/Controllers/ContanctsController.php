@@ -26,7 +26,7 @@ class ContanctsController extends Controller
         $contanctsTable = new Contancts();
         //$contanctsTable->validateFields($email, $phoneNumber);
         $userDetails = $contanctsTable->getUserIdentity($email, $phoneNumber);
-        Log::debug($userDetails);
+
         return json_encode([
             "contact" => $userDetails
         ]);

@@ -42,11 +42,14 @@ class Contancts extends Model
             ->toArray();
 
         if (!$isContanctDetailsExistInDb) {
+            if ($phoneNumber == NULL || $email == NULL) {
+                return ["error" => "Input Fields cannot be null"];
+            }
             // insert the record
             $contanctDetails = self::create([
                 "phone_number" => $phoneNumber,
                 "email" => $email,
-                "linked_precedence" => "primary"
+                "link_precedence" => "primary"
             ]);
 
             return [
@@ -79,7 +82,6 @@ class Contancts extends Model
             $phoneNumbers =  $emails = $secondaryContactIds = [];
             array_push($phoneNumbers, $primaryContanctDetails[0]['phone_number']);
             array_push($emails, $primaryContanctDetails[0]['email']);
-
             // update other rows as secondary
             foreach ($primaryContanctDetails as $primaryContanctDetail) {
                 if ($primaryContanctDetail['id'] != $primaryContanctId) {
@@ -88,21 +90,30 @@ class Contancts extends Model
                         'link_precedence' => "secondary",
                         "linked_id" => $primaryContanctId
                     ]);
-
-                    if (!in_array($primaryContanctDetail["id"], $secondaryContactIds)) {
-                        array_push($secondaryContactIds, $primaryContanctDetail["id"]);
-                    }
-                    if (!in_array($primaryContanctDetail["phone_number"], $phoneNumbers)) {
-                        array_push($phoneNumbers, $primaryContanctDetail["phone_number"]);
-                    }
-                    if (!in_array($primaryContanctDetail["email"], $emails)) {
-                        array_push($emails, $primaryContanctDetail["email"]);
-                    }
                 }
             }
 
+            $secondaryContanctDetails = self::where("linked_id", $primaryContanctId)
+                ->select(
+                    'id',
+                    'phone_number',
+                    'email'
+                )
+                ->get()
+                ->toArray();
+
+            foreach ($secondaryContanctDetails as $secondaryContanctDetail) {
+                if (!(in_array($secondaryContanctDetail['phone_number'], $phoneNumbers))) {
+                    array_push($phoneNumbers, $secondaryContanctDetail['phone_number']);
+                }
+                if (!in_array($secondaryContanctDetail['email'], $emails)) {
+                    array_push($emails, $secondaryContanctDetail['email']);
+                }
+                array_push($secondaryContactIds, $secondaryContanctDetail['id']);
+            }
+
             return [
-                "primaryContatctId" => $primaryContanctDetails[0]['id'],
+                "primaryContatctId" => $primaryContanctId,
                 "emails" => $emails,
                 "phoneNumbers" => $phoneNumbers,
                 "secondaryContactIds" => $secondaryContactIds
@@ -119,6 +130,8 @@ class Contancts extends Model
                 ->toArray();
 
             $phoneNumbers =  $emails = $secondaryContactIds = [];
+            array_push($phoneNumbers, $primaryContanctDetails[0]['phone_number']);
+            array_push($emails, $primaryContanctDetails[0]['email']);
             foreach ($secondaryContanctDetails as $secondaryContanctDetail) {
                 if (!in_array($secondaryContanctDetail["id"], $secondaryContactIds)) {
                     array_push($secondaryContactIds, $secondaryContanctDetail["id"]);
@@ -129,6 +142,32 @@ class Contancts extends Model
                 if (!in_array($secondaryContanctDetail["email"], $emails)) {
                     array_push($emails, $secondaryContanctDetail["email"]);
                 }
+            }
+
+            if ((!in_array($phoneNumber, $phoneNumbers))
+                && ($phoneNumber != null)
+             ) {
+                $newRecord = self::create([
+                    "phone_number" => $phoneNumber,
+                    "email" => $email,
+                    "link_precedence" => "secondary",
+                    "linked_id" => $primaryContanctDetails[0]["id"]
+                ]);
+                array_push($phoneNumbers, $phoneNumber);
+                array_push($secondaryContactIds, $newRecord['id']);
+            }
+            if (
+                ($email != null)
+                && (!in_array($email, $emails))
+            ){
+                $newRecord = self::create([
+                    "phone_number" => $phoneNumber,
+                    "email" => $email,
+                    "link_precedence" => "secondary",
+                    "linked_id" => $primaryContanctDetails[0]["id"]
+                ]);
+                array_push($emails, $email);
+                array_push($secondaryContactIds, $newRecord['id']);
             }
 
             return [
@@ -154,47 +193,9 @@ class Contancts extends Model
             ->get()
             ->toArray();
             
-            $sampleIds = array_unique(array_column($contanctDetails, "id"));
-            $secondaryContanctDetails = self::where("linked_id", $contanctDetails[0]['linked_id'])
-                ->wherenotin("id", $sampleIds)
-                ->select(
-                    "id",
-                    "email",
-                    "phone_number",
-                    "linked_id",
-                    "link_precedence"
-                )
-                ->get()
-                ->toArray();
-
-            //array_merge($contanctDetails, $secondaryContanctDetails);
-            
-            // Log::debug($contanctDetails);
-            // Log::debug("---------------------------");
-            // Log::debug($secondaryContanctDetails);
-            $contanctDetails = array_merge($contanctDetails, $secondaryContanctDetails);
-            Log::debug($contanctDetails);
-
-            $linkedIds = $phoneNumbers = $emails = $secondaryContactIds = [];
-            foreach ($contanctDetails as $contanctDetail) {
-                if (!in_array($contanctDetail['linked_id'], $linkedIds)) {
-                    array_push($linkedIds, $contanctDetail['linked_id']);
-                }
-                if (!in_array($contanctDetail['phone_number'], $phoneNumbers)) {
-                    array_push($phoneNumbers, $contanctDetail['phone_number']);
-                }
-                if (!in_array($contanctDetail['email'], $emails)) {
-                    array_push($emails, $contanctDetail['email']);
-                }
-                if (!in_array($contanctDetail['id'], $secondaryContactIds)) {
-                    array_push($secondaryContactIds, $contanctDetail['id']);
-                }
-            }
-            // scenario 1 : > 1
-            // scenario 2 : = 1
+            $linkedIds = array_unique(array_column($contanctDetails, "linked_id"));
             if (count($linkedIds) == 1) {
-                $primaryContanctDetails = self::where("id" , $linkedIds)
-                    ->where("link_precedence", "primary")
+                $primaryContanctDetails = self::where("id", $linkedIds)
                     ->select(
                         "id",
                         "email",
@@ -203,12 +204,98 @@ class Contancts extends Model
                         "link_precedence"
                     )
                     ->first();
+                
+                $additioanlSecondaryContanctDetails = self::where("linked_id", $linkedIds)
+                    ->select(
+                        "id",
+                        "email",
+                        "phone_number",
+                        "linked_id",
+                        "link_precedence"
+                    )
+                    ->get()
+                    ->toArray();
 
-                if (!in_array($primaryContanctDetails['phone_number'], $phoneNumbers)) {
-                    array_push($phoneNumbers, $primaryContanctDetails['phone_number']);
+                if ($additioanlSecondaryContanctDetails) {
+                    $contanctDetails = array_merge($contanctDetails, $additioanlSecondaryContanctDetails);
                 }
-                if (!in_array($primaryContanctDetails['email'], $emails)) {
-                    array_push($emails, $primaryContanctDetails['email']);
+
+                $phoneNumbers = $emails = $secondaryContactIds = [];
+                foreach ($contanctDetails as $contanctDetail) {
+                    if (!in_array($contanctDetail['phone_number'], $phoneNumbers)) {
+                        array_push($phoneNumbers, $contanctDetail['phone_number']);
+                    }
+                    if (!in_array($contanctDetail['email'], $emails)) {
+                        array_push($emails, $contanctDetail['email']);
+                    }
+
+                    if  (!in_array($contanctDetail['id'], $secondaryContactIds)) {
+                        array_push($secondaryContactIds, $contanctDetail['id']);
+                    }
+                }
+                
+                sort($secondaryContactIds);
+                return [
+                    "primaryContatctId" => $primaryContanctDetails['id'],
+                    "emails" => $emails,
+                    "phoneNumbers" => $phoneNumbers,
+                    "secondaryContactIds" => $secondaryContactIds
+                ];
+            } else {
+                // need to update
+                sort($linkedIds);
+                // first linked id is primary
+                $primaryContanctDetails = self::where("id", $linkedIds[0])
+                    ->select(
+                        "id",
+                        "email",
+                        "phone_number",
+                        "linked_id",
+                        "link_precedence"
+                    )
+                    ->first();
+                
+                $additionalIds = [];
+                for($i = 1; $i < count($linkedIds); $i++) {
+                    array_push($additionalIds, $linkedIds[$i]);
+                }
+
+                Log::debug($additionalIds);
+                self::whereIn('linked_id', $additionalIds)
+                    ->update([
+                            'linked_id' => $linkedIds[0]
+                    ]);
+                self::whereIn('id', $additionalIds)
+                    ->update([
+                        'linked_id' => $linkedIds[0],
+                        'link_precedence' => "secondary"            
+                    ]);
+
+                $additionalSecondaryContactDetails = self::where("linked_id", $linkedIds[0])
+                    ->select(
+                        "id",
+                        "email",
+                        "phone_number",
+                        "linked_id",
+                        "link_precedence"
+                    )
+                    ->get()
+                    ->toArray();
+
+                $contanctDetails = array_merge($contanctDetails, $additionalSecondaryContactDetails);
+                $emails = $phoneNumbers = $secondaryContactIds = [];
+                array_push($emails, $primaryContanctDetails['email']);
+                array_push($phoneNumbers, $primaryContanctDetails['phone_number']);
+                foreach($contanctDetails as $contanctDetail) {
+                    if (!in_array($contanctDetail['id'], $secondaryContactIds)) {
+                        array_push($secondaryContactIds, $contanctDetail['id']);
+                    }
+                    if (!in_array($contanctDetail['phone_number'], $phoneNumbers)) {
+                        array_push($phoneNumbers, $contanctDetail['phone_number']);
+                    }
+                    if (!in_array($contanctDetail['email'], $emails)) {
+                        array_push($emails, $contanctDetail['email']);
+                    }
                 }
 
                 return [
