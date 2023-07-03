@@ -13,9 +13,5 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::get('/', function () {
-    return view('welcome');
-});
+Route::get("/identity", [App\Http\Controllers\ContactsController::class, "identity"]);
 
-Route::get("/identity", [App\Http\Controllers\ContanctsController::class, "identity"]);
-Route::get("/create", [App\Http\Controllers\ContanctsController::class, "create"]);
